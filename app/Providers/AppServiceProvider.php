@@ -17,11 +17,17 @@ class AppServiceProvider extends ServiceProvider
             $app->configure('services');
             return $app->loadComponent('mail', 'Illuminate\Mail\MailServiceProvider', 'mailer');
         });
-        /*\DB::listen(function ($query) {
+        
+    }
+    
+    public function boot(): void
+    {
+        \DB::listen(function ($query) {
+            info("asdsadsad");
             $bindings = collect($query->bindings)->map(function ($param) {
                 return is_numeric($param) ?  $param : "'$param'";
             });
           \Log::info(\Illuminate\Support\Str::replaceArray('?', $bindings->toArray(), $query->sql));
-        });*/
+        });
     }
 }

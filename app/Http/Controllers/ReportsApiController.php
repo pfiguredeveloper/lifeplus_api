@@ -18,6 +18,7 @@ use App\Models\LifeCellLic\Surveryors;
 use App\Models\LifeCellLic\Branch;
 use App\Models\LifeCellLic\Tpahospital;
 use App\Models\LifeCellLic\TPA;
+use App\Models\LifeCellLic\Family_group;
 
 use DB;
 use App\Models\LifeCellLic\GiPolicy;
@@ -180,113 +181,244 @@ class ReportsApiController extends Controller
     public function getReportsDatas(Request $request) {
         $data = [];
         $para = $request->all();
-        $start  = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('Y-m-d') : NULL;
-        $end    = !empty($para['to_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['to_date'])->format('Y-m-d') : NULL;
+        info($para);
+        $end = !empty($para['to_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['to_date'])->format('Y-m-d') : NULL;
+        $start = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('Y-m-d') : NULL;
         if(!empty($request['id'])) {
             if($request['id'] == 2) {
+                $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE')
+                ->leftjoin("party","party.GCODE","pol.NAME1")
+                ->leftjoin("area","area.ARECD","party.ARECD")
+                ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                ->leftjoin("agency","agency.AFILE","pol.AFILE")
+                ->leftjoin("city","city.CITYID","party.CITYID");
                 if(!empty($start) && !empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','ECS_MODE')->whereBetween('FUPDATE',[$start, $end]);
+                    $query->whereBetween('FUPDATE',[$start,$end]);
                 } else if(!empty($start)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','ECS_MODE')->where('FUPDATE',$start);
+                    $query->where('FUPDATE',$start);
                 } else if(!empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','ECS_MODE')->where('FUPDATE',"<=",$end); 
+                    $query->where('FUPDATE',"<=",$end); 
                 }
-                if(!empty($request['idss'])) {
-                    $data = $data->whereIn('PUNIQID',$request['idss']);
+                if(!empty($para['idss'])) {
+                    $query->whereIn('PUNIQID',$para['idss']);
                 }
-                $data = $data->where('client_id',$request['client_id'])->orderBy('PONO','DESC')->get();
+                if(!empty($para['redio_option'])) {
+                    $query->where(function($query) use($para) {
+                        $query->when(in_array("MLY?",$para['redio_option']),function($query) use($para) {
+                            $query->where('MODE',"Monthly");
+                        })
+                        ->when(in_array("SSS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('MODE',"SSS");
+                        })
+                        ->when(in_array("ECS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('ECS_MODE','Yes');
+                        });
+                    });
+                }
+                /* Filter Options Query */
+                $query->where(function($query) use($para) {
+                    $query->when(!empty($para['selectAgency']),function($query) use($para) {
+                        $query->whereIn('pol.AFILE',$para['selectAgency']);
+                    })
+                    ->when(!empty($para['selectArea']),function($query) use($para) {
+                        $query->orWhereIn('party.ARECD',$para['selectArea']);
+                    })
+                    ->when(!empty($para['selectCity']),function($query) use($para) {
+                        $query->orWhereIn('party.CITYID',$para['selectCity']);
+                    })
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->orWhereIn('party.FNAME',$para['selectFamilyGroup']);
+                    });
+                });
+                $column_name = "";
+                if($para['sorting_option']==0) {
+                    $column_name = "PONO,PNAME";
+                }
+                elseif($para['sorting_option']==1) {
+                    $column_name = "area.ARE1,family_group.GNM";                    
+                }
+                elseif($para['sorting_option']==2) {
+                    $column_name = "area.ARE1";                      
+                }
+                elseif($para['sorting_option']==3) {
+                    $column_name = "pol.BRANCH";
+                }
+                elseif($para['sorting_option']==4) {
+                    $column_name = "pol.FUPDATE";
+                }
+                elseif($para['sorting_option']==5) {
+                    $column_name = "family_group.GNM";
+                }
+                elseif($para['sorting_option']==6) {
+                    $column_name = "pol.PONO";
+                }
+                $data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->get();
             } else if($request['id'] == 5) {
+                $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE')
+                ->leftjoin("party","party.GCODE","pol.NAME1")
+                ->leftjoin("area","area.ARECD","party.ARECD")
+                ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                ->leftjoin("agency","agency.AFILE","pol.AFILE")
+                ->leftjoin("city","city.CITYID","party.CITYID");
                 if(!empty($start) && !empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE')->whereBetween('FUPDATE',[$start, $end]);
+                    $query->whereRaw("DATE_ADD(pol.FUPDATE, INTERVAL +6 MONTH) BETWEEN '$start' AND '$end'");
                 } else if(!empty($start)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE')->where('FUPDATE',$start);
+                    $query->where(DB::raw('DATE_ADD(pol.FUPDATE, INTERVAL +6 MONTH)'),$start);
                 } else if(!empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE')->where('FUPDATE',"<=",$end); 
+                    $query->where(DB::raw('DATE_ADD(pol.FUPDATE, INTERVAL +6 MONTH)'),"<=",$end); 
+                }
+                if(!empty($para['idss'])) {
+                    $query->whereIn('PUNIQID',$para['idss']);
+                }
+                if(!empty($para['redio_option'])) {
+                    $query->where(function($query) use($para) {
+                        $query->when(in_array("MLY?",$para['redio_option']),function($query) use($para) {
+                            $query->where('MODE',"Monthly");
+                        })
+                        ->when(in_array("SSS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('MODE',"SSS");
+                        })
+                        ->when(in_array("ECS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('ECS_MODE',"Yes");
+                        });
+                    });
+                }
+
+                /* Filter Options Query */
+                $query->where(function($query) use($para) {
+                    $query->when(!empty($para['selectAgency']),function($query) use($para) {
+                        $query->whereIn('pol.AFILE',$para['selectAgency']);
+                    })
+                    ->when(!empty($para['selectArea']),function($query) use($para) {
+                        $query->orWhereIn('party.ARECD',$para['selectArea']);
+                    })
+                    ->when(!empty($para['selectCity']),function($query) use($para) {
+                        $query->orWhereIn('party.CITYID',$para['selectCity']);
+                    })
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->orWhereIn('party.FNAME',$para['selectFamilyGroup']);
+                    });
+                });
+                $column_name = "";
+                if($para['sorting_option']==0) {
+                    $column_name = "PONO,PNAME";
+                }
+                $data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->get();
+            } 
+            else if($request['id'] == 6) {
+                if(!empty($start) && !empty($end)) {
+                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->whereBetween('MATDATE',[$start, $end]);
+                } else if(!empty($start)) {
+                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->where('MATDATE',$start);
+                } else if(!empty($end)) {
+                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->where('MATDATE',"<=",$end);
                 }
                 if(!empty($request['idss'])) {
                     $data = $data->whereIn('PUNIQID',$request['idss']);
                 }
-                $data = $data->where('client_id',$request['client_id'])->orderBy('PONO','DESC')->get();
-            } else if($request['id'] == 9) {				
+                $data = $data->where('client_id',$request['client_id'])->get();
+            }
+            else if($request['id'] == 8) {
+                $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE')
+                ->leftjoin("party","party.GCODE","pol.NAME1")
+                ->leftjoin("area","area.ARECD","party.ARECD")
+                ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                ->leftjoin("agency","agency.AFILE","pol.AFILE")
+                ->leftjoin("city","city.CITYID","party.CITYID");
+                if(!empty($start) && !empty($end)) {
+                    $query->whereBetween('MATDATE',[$start, $end]);
+                } else if(!empty($start)) {
+                    $query->where('MATDATE',$start);
+                } else if(!empty($end)) {
+                    $query->where('MATDATE',"<=",$end); 
+                }
+                if(!empty($para['idss'])) {
+                    $query->whereIn('PUNIQID',$para['idss']);
+                }
+
+                /* Filter Options Query */
+                $query->where(function($query) use($para) {
+                    $query->when(!empty($para['selectAgency']),function($query) use($para) {
+                        $query->whereIn('pol.AFILE',$para['selectAgency']);
+                    })
+                    ->when(!empty($para['selectArea']),function($query) use($para) {
+                        $query->orWhereIn('party.ARECD',$para['selectArea']);
+                    })
+                    ->when(!empty($para['selectCity']),function($query) use($para) {
+                        $query->orWhereIn('party.CITYID',$para['selectCity']);
+                    })
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->orWhereIn('party.FNAME',$para['selectFamilyGroup']);
+                    });
+                });
+                $column_name = "";
+                if($para['sorting_option']==0) {
+                    $column_name = "PNAME";
+                }
+                $data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->get();
+            }
+            else if($request['id'] == 9) {	
+                $order_column_name =  !empty($para['sorting_option']) ? "NAME" : "ABD"; 			
 				$city    		 = !empty($para['param2']) ? $para['param2'] : NULL;
                 $area   		 = !empty($para['param1']) ? $para['param1'] : NULL;
 				$ABD    		 = \DB::raw('DATE_FORMAT(ABD,"%m-%d")');
 				$where 			 = 'WHERE 1 = 1 ';
-				if(!empty($start) && !empty($end))
-				{
+				if(!empty($start) && !empty($end)) {
 					$where 		.= " &&  (DATE_FORMAT(ABD, '%c-%d') BETWEEN DATE_FORMAT('$start', '%c-%d') AND DATE_FORMAT('$end', '%c-%d') OR (MONTH('$start') > MONTH('$end') AND (MONTH(ABD) >= MONTH('$start') OR MONTH(ABD) <= MONTH('$end'))))";
-					// $where 		.= " &&  (MONTH(ABD) BETWEEN MONTH('$start') AND MONTH('$end'))";
 				}
-				else if(!empty($start))
-				{
+				else if(!empty($start)) {
 					$starta  	 = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('m-d') : NULL;
                     $where   	.= " &&  $ABD = $starta";
                 }
-				else if(!empty($end))
-				{
+				else if(!empty($end)) {
 					$enda    	 = !empty($para['to_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['to_date'])->format('m-d') : NULL;
                     $where   	.= " &&  $ABD <= $enda";
                 }
-				
-				if(!empty($city))
-				{
+				if(!empty($city)) {
 					$where   .= " &&  FIND_IN_SET(CITYID,'$city')";
 				}
-				
-				if(!empty($area))
-				{
+				if(!empty($area)) {
 					$where   .= " &&  FIND_IN_SET(ARECD,'$area')";
 				}
-				
-				$qry 		= "SELECT GCODE, NAME, BD, ABD, WDT, MOBILE FROM party $where && client_id = '".$request['client_id']."'";
-				$dts 		= \DB::connection('lifecell_lic')->select($qry);
-				$data 		= array();
-				$i 			= 0;
-				foreach($dts as $rw)
-				{
-					foreach($rw as $k=>$v)
-					{
+				$client_id = $request['client_id'];
+				$qry 	= "SELECT GCODE, NAME, BD, ABD, WDT, MOBILE FROM party $where && client_id = $client_id ORDER BY $order_column_name ASC";
+				$dts 	= \DB::connection('lifecell_lic')->select($qry);
+               $data = array();
+				$i = 0;
+				foreach($dts as $rw)  {
+					foreach($rw as $k=>$v) {
 						$data[$i][$k]	= $v;
 					}
 					$i++;
 				}
-				
 			} else if($request['id'] == 10) {
-				$city    		 = !empty($para['param2']) ? $para['param2'] : NULL;
+                $order_column_name =  !empty($para['sorting_option']) ? "NAME" : "WDT";            
+                $city    		 = !empty($para['param2']) ? $para['param2'] : NULL;
                 $area   		 = !empty($para['param1']) ? $para['param1'] : NULL;
 				$WDT    		 = \DB::raw('DATE_FORMAT(WDT,"%m-%d")');
 				$where 			 = 'WHERE 1 = 1 ';
-				if(!empty($start) && !empty($end))
-				{
+				if(!empty($start) && !empty($end)) {
 					$where 		.= " &&  (DATE_FORMAT(WDT, '%c-%d') BETWEEN DATE_FORMAT('$start', '%c-%d') AND DATE_FORMAT('$end', '%c-%d') OR (MONTH('$start') > MONTH('$end') AND (MONTH(WDT) >= MONTH('$start') OR MONTH(WDT) <= MONTH('$end'))))";
-					// $where 		.= " &&  (MONTH(WDT) BETWEEN MONTH('$start') AND MONTH('$end'))";
 				}
-				else if(!empty($start))
-				{
+				else if(!empty($start)) {
 					$starta  	 = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('m-d') : NULL;
                     $where   	.= " &&  $WDT = $start";
                 }
-				else if(!empty($end))
-				{
+				else if(!empty($end)) {
 					$start  	 = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('m-d') : NULL;
 					$end    	 = !empty($para['to_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['to_date'])->format('m-d') : NULL;
                     $where   	.= " &&  $WDT <= $end";
                 }
-				
-				if(!empty($city))
-				{
+				if(!empty($city)) {
 					$where   .= " &&  FIND_IN_SET(CITYID,'$city')";
-					
-				}
-				
-				if(!empty($area))
-				{
+                }
+				if(!empty($area)) {
 					$where   .= " &&  FIND_IN_SET(ARECD,'$area')";
 				}
-				
-				$qry 		= "SELECT GCODE, NAME, BD, ABD, WDT, MOBILE FROM party $where && client_id = '".$request['client_id']."'";
+				$client_id = $request['client_id'];
+				$qry 		= "SELECT GCODE, NAME, BD, ABD, WDT, MOBILE FROM party $where && client_id = $client_id ORDER BY $order_column_name ASC";
 				$dts 		= \DB::connection('lifecell_lic')->select($qry);
-				$data 		= array();
+			   $data 		= array();
 				$i 			= 0;
 				foreach($dts as $rw)
 				{
@@ -297,17 +429,12 @@ class ReportsApiController extends Controller
 					$i++;
 				}
 			}
-            
+
         }
         return response()->json(["success" => 1, "msg" => "Success.","data"=>$data]);
     }
     public function getReportsData(Request $request) {
         $data = [];
-        info("***************************************");
-        info("***************************************");
-        info("***************************************");
-        info("***************************************");
-        info("***************************************");
         $para = $request->all();
         $start  = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('Y-m-d') : NULL;
         $end    = !empty($para['to_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['to_date'])->format('Y-m-d') : NULL;
@@ -325,17 +452,84 @@ class ReportsApiController extends Controller
                 }
                 $data = $data->where('client_id',$request['client_id'])->get();
             } else if($request['id'] == 2) {
+                $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE')
+                ->leftjoin("party","party.GCODE","pol.NAME1")
+                ->leftjoin("area","area.ARECD","party.ARECD")
+                ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                ->leftjoin("agency","agency.AFILE","pol.AFILE")
+                ->leftjoin("city","city.CITYID","party.CITYID");
                 if(!empty($start) && !empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','ECS_MODE')->whereBetween('FUPDATE',[$start, $end]);
+                    $query->whereBetween('FUPDATE',[$start, $end]);
                 } else if(!empty($start)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','ECS_MODE')->where('FUPDATE',$start);
+                    $query->where('FUPDATE',$start);
                 } else if(!empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','ECS_MODE')->where('FUPDATE',"<=",$end); 
+                    $query->where('FUPDATE',"<=",$end); 
                 }
-                if(!empty($request['idss'])) {
-                    $data = $data->whereIn('PUNIQID',$request['idss']);
+                if(!empty($para['idss'])) {
+                    $query->whereIn('PUNIQID',$para['idss']);
                 }
-                $data = $data->where('client_id',$request['client_id'])->orderBy('PONO','DESC')->get();
+                if(!empty($para['redio_option'])) {
+                    $query->where(function($query) use($para) {
+                        $query->when(in_array("MLY?",$para['redio_option']),function($query) use($para) {
+                            $query->where('MODE',"Monthly");
+                        })
+                        ->when(in_array("SSS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('MODE',"SSS");
+                        })
+                        ->when(in_array("ECS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('ECS_MODE',"Yes");
+                        });
+                    });
+                }
+               /* if(!empty($para['select_option'])) {
+                    if($para['select_option']==3) {
+                        $query->where('MODE',"Monthly");
+                    }
+                    if($para['select_option']==4) {
+                        $query->where('MODE',"SSS");
+                    }
+                    if($para['select_option']==4) {
+                        $query->where('ECS_MODE',"Yes");
+                    }
+                }*/
+                /* Filter Options Query */
+                $query->where(function($query) use($para) {
+                    $query->when(!empty($para['selectAgency']),function($query) use($para) {
+                        $query->whereIn('pol.AFILE',$para['selectAgency']);
+                    })
+                    ->when(!empty($para['selectArea']),function($query) use($para) {
+                        $query->orWhereIn('party.ARECD',$para['selectArea']);
+                    })
+                    ->when(!empty($para['selectCity']),function($query) use($para) {
+                        $query->orWhereIn('party.CITYID',$para['selectCity']);
+                    })
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->orWhereIn('party.FNAME',$para['selectFamilyGroup']);
+                    });
+                });
+                $column_name = "";
+                if($para['sorting_option']==0) {
+                    $column_name = "PONO,PNAME";
+                }
+                elseif($para['sorting_option']==1) {
+                    $column_name = "area.ARE1,family_group.GNM";                    
+                }
+                elseif($para['sorting_option']==2) {
+                    $column_name = "area.ARE1";                      
+                }
+                elseif($para['sorting_option']==3) {
+                    $column_name = "pol.BRANCH";
+                }
+                elseif($para['sorting_option']==4) {
+                    $column_name = "pol.FUPDATE";
+                }
+                elseif($para['sorting_option']==5) {
+                    $column_name = "family_group.GNM";
+                }
+                elseif($para['sorting_option']==6) {
+                    $column_name = "pol.PONO";
+                }
+                $data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->get();
             } else if($request['id'] == 3) {
                 if(!empty($start) && !empty($end)) {
                     $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','LASTPREM')->whereBetween('LASTPREM',[$start, $end]);
@@ -361,17 +555,54 @@ class ReportsApiController extends Controller
                 }
                 $data = $data->where('client_id',$request['client_id'])->get();
             } else if($request['id'] == 5) {
+                $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE')
+                ->leftjoin("party","party.GCODE","pol.NAME1")
+                ->leftjoin("area","area.ARECD","party.ARECD")
+                ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                ->leftjoin("agency","agency.AFILE","pol.AFILE")
+                ->leftjoin("city","city.CITYID","party.CITYID");
                 if(!empty($start) && !empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','BRANCH')->whereBetween('FUPDATE',[$start, $end]);
+                    $query->whereRaw("DATE_ADD(pol.FUPDATE, INTERVAL +6 MONTH) BETWEEN '$start' AND '$end'");
                 } else if(!empty($start)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','BRANCH')->where('FUPDATE',$start);
+                    $query->where(DB::raw('DATE_ADD(pol.FUPDATE, INTERVAL +6 MONTH)'),$start);
                 } else if(!empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','FUPDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','MATDATE','BRANCH')->where('FUPDATE',"<=",$end); 
+                    $query->where(DB::raw('DATE_ADD(pol.FUPDATE, INTERVAL +6 MONTH)'),"<=",$end); 
                 }
-                if(!empty($request['idss'])) {
-                    $data = $data->whereIn('PUNIQID',$request['idss']);
+                if(!empty($para['idss'])) {
+                    $query->whereIn('PUNIQID',$para['idss']);
                 }
-                $data = $data->where('client_id',$request['client_id'])->orderBy('PONO','DESC')->get();
+                if(!empty($para['redio_option'])) {
+                    $query->where(function($query) use($para) {
+                        $query->when(in_array("MLY?",$para['redio_option']),function($query) use($para) {
+                            $query->where('MODE',"Monthly");
+                        })
+                        ->when(in_array("SSS?",$para['redio_option']),function($query) use($para) {
+                            $query->orWhere('MODE',"SSS");
+                        });
+                    });
+                }
+
+                /* Filter Options Query */
+                $query->where(function($query) use($para) {
+                    $query->when(!empty($para['selectAgency']),function($query) use($para) {
+                        $query->whereIn('pol.AFILE',$para['selectAgency']);
+                    })
+                    ->when(!empty($para['selectArea']),function($query) use($para) {
+                        $query->orWhereIn('party.ARECD',$para['selectArea']);
+                    })
+                    ->when(!empty($para['selectCity']),function($query) use($para) {
+                        $query->orWhereIn('party.CITYID',$para['selectCity']);
+                    })
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->orWhereIn('party.FNAME',$para['selectFamilyGroup']);
+                    });
+                });
+                $column_name = "";
+                if($para['sorting_option']==0) {
+                    $column_name = "PONO,PNAME";
+                }
+                $data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->get();
+
             } else if($request['id'] == 6) {
                 if(!empty($start) && !empty($end)) {
                     $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->whereBetween('MATDATE',[$start, $end]);
@@ -397,17 +628,42 @@ class ReportsApiController extends Controller
                 }
                 $data = $data->where('client_id',$request['client_id'])->get();
             } else if($request['id'] == 8) {
+                $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE')
+                ->leftjoin("party","party.GCODE","pol.NAME1")
+                ->leftjoin("area","area.ARECD","party.ARECD")
+                ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                ->leftjoin("agency","agency.AFILE","pol.AFILE")
+                ->leftjoin("city","city.CITYID","party.CITYID");
                 if(!empty($start) && !empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE')->whereBetween('MATDATE',[$start, $end]);
+                    $query->whereBetween('MATDATE',[$start, $end]);
                 } else if(!empty($start)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE')->where('MATDATE',$start);
+                    $query->where('MATDATE',$start);
                 } else if(!empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE')->where('MATDATE',"<=",$end);
+                    $query->where('MATDATE',"<=",$end); 
                 }
-                if(!empty($request['idss'])) {
-                    $data = $data->whereIn('PUNIQID',$request['idss']);
+                if(!empty($para['idss'])) {
+                    $query->whereIn('PUNIQID',$para['idss']);
                 }
-                $data = $data->where('client_id',$request['client_id'])->get();
+                /* Filter Options Query */
+                $query->where(function($query) use($para) {
+                    $query->when(!empty($para['selectAgency']),function($query) use($para) {
+                        $query->whereIn('pol.AFILE',$para['selectAgency']);
+                    })
+                    ->when(!empty($para['selectArea']),function($query) use($para) {
+                        $query->orWhereIn('party.ARECD',$para['selectArea']);
+                    })
+                    ->when(!empty($para['selectCity']),function($query) use($para) {
+                        $query->orWhereIn('party.CITYID',$para['selectCity']);
+                    })
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->orWhereIn('party.FNAME',$para['selectFamilyGroup']);
+                    });
+                });
+                $column_name = "";
+                if($para['sorting_option']==0) {
+                    $column_name = "PNAME";
+                }
+                $data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->get();
             } else if($request['id'] == 9) {
                 $start  = !empty($para['from_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['from_date'])->format('m-d') : NULL;
                 $end    = !empty($para['to_date']) ? \Carbon\Carbon::createFromFormat('d/m/Y', $para['to_date'])->format('m-d') : NULL;
@@ -440,17 +696,82 @@ class ReportsApiController extends Controller
                 }
                 $data = $data->where('client_id',$request['client_id'])->get();
             } else if($request['id'] == 12) {
-                if(!empty($start) && !empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->whereBetween('MATDATE',[$start, $end]);
-                } else if(!empty($start)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->where('MATDATE',$start);
-                } else if(!empty($end)) {
-                    $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->where('MATDATE',"<=",$end);
+               
+
+                /* Family Wise Report */
+                if($para['optionsRadios']=="Family") {
+                    $family_group_ids = Family_group::where("client_id",$request["client_id"])->pluck("GCODE")->toArray();
+                    $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE','pol.LASTPREM','party.NAME','MODE','party.AD','party.AD2','party.AD3','party.ABD','party.PHONE_R','party.MOBILE','family_group.GNM as family_name','party.FNAME')
+                    ->leftjoin("party","party.GCODE","pol.NAME1")
+                    ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                    ->when(!empty($para['selectFamilyGroup']),function($query) {
+                        $query->whereIn("party.FNAME",$para['selectFamilyGroup']);
+                    })
+                    ->when(empty($para['selectFamilyGroup']),function($query) use($family_group_ids) {
+                        $query->whereIn("party.FNAME",$family_group_ids);
+                    });
+                    if(!empty($start) && !empty($end)) {
+                        $query->whereBetween('FUPDATE',[$start,$end]);
+                    } else if(!empty($start)) {
+                        $query->where('FUPDATE',$start);
+                    } else if(!empty($end)) {
+                        $query->where('FUPDATE',"<=",$end); 
+                    } 
+                    if(!empty($para['redio_option'])) {
+                        $query->where(function($query) use($para) {
+                            $query->when(in_array("ECS?",$para['redio_option']),function($query) use($para) {
+                                $query->orWhere('ECS_MODE','Yes');
+                            });
+                        });
+                    }
+                    $column_name = "PONO,PNAME";
+                    $temp_data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->limit(20)->get();
+                    $data = [];
+                    foreach (($para['selectFamilyGroup'] ?? $family_group_ids) as $value) {
+                        $temp = $temp_data->filter(function($item) use($value) {
+                            return $item->FNAME==$value;
+                        });
+                        if(count($temp)) {
+                            $data[$value] = $temp;
+                        }
+                    }
                 }
-                if(!empty($request['idss'])) {
-                    $data = $data->whereIn('PUNIQID',$request['idss']);
+                else{
+                    $party_ids = Party::where("client_id",$request["client_id"])->pluck("GCODE")->toArray();
+                    $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE','pol.LASTPREM','party.NAME','MODE','party.AD','party.AD2','party.AD3','party.ABD','party.PHONE_R','party.MOBILE')
+                    ->leftjoin("party","party.GCODE","pol.NAME1")
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->whereIn("pol.NAME1",$para['selectFamilyGroup']);
+                    })
+                    ->when(empty($para['selectFamilyGroup']),function($query) use($party_ids) {
+                        $query->whereIn("pol.NAME1",$party_ids);
+                    })->where("LASTPREM",">=",$start);
+                    /*if(!empty($start) && !empty($end)) {
+                        $query->whereBetween('FUPDATE',[$start,$end]);
+                    } else if(!empty($start)) {
+                        $query->where('FUPDATE',$start);
+                    } else if(!empty($end)) {
+                        $query->where('FUPDATE',"<=",$end); 
+                    }*/ 
+                    if(!empty($para['redio_option'])) {
+                        $query->where(function($query) use($para) {
+                            $query->when(in_array("ECS?",$para['redio_option']),function($query) use($para) {
+                                $query->orWhere('ECS_MODE','Yes');
+                            });
+                        });
+                    }
+                    $column_name = "PONO,PNAME";
+                    $temp_data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->limit(20)->get();
+                    $data = [];
+                    foreach (($para['selectFamilyGroup'] ?? $party_ids) as $value) {
+                        $temp = $temp_data->filter(function($item) use($value) {
+                            return $item->NAME1==$value;
+                        });
+                        if(count($temp)) {
+                            $data[$value] = $temp;
+                        }
+                    }
                 }
-                $data = $data->where('client_id',$request['client_id'])->get();
             } else if($request['id'] == 13) {
                 if(!empty($start) && !empty($end)) {
                     $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->whereBetween('MATDATE',[$start, $end]);
@@ -472,7 +793,7 @@ class ReportsApiController extends Controller
                     $data   = Policy::select('PUNIQID','PONO','RDT','PLAN','MODE','PREM','MATDATE','AGCODE','NAME1','AFILE','SA','MTERM','TERM','BCODE','FUPDATE')->where('MATDATE',"<=",$end);
                 }
                 if(!empty($request['idss'])) {
-                    $data = $data->whereIn('PUNIQID',$request['idss']);
+                    $data = $data-> whereIn('PUNIQID',$request['idss']);
                 }
                 $data = $data->where('client_id',$request['client_id'])->get();
             } else if($request['id'] == 15) {
@@ -571,7 +892,8 @@ class ReportsApiController extends Controller
                                         ->get();
             }
             else if($request['id'] == 20) {
-                $query = Branch::select('branch.BCODE','BRANCH','city.CITY','AD1','AD2','AD3','ADDRESS','PIN','PHONE_O','BRANCHNM','BR_MGR_NM')->leftjoin("city","city.CITYID","branch.CITYID")
+                $query = Branch::select('branch.BCODE','BRANCH','city.CITY','AD1','AD2','AD3','ADDRESS','PIN','PHONE_O','BRANCHNM','BR_MGR_NM')
+                ->leftjoin("city","city.CITYID","branch.CITYID")
                 ->where("branch.is_delete",0)
                 ->where('branch.client_id',$request['client_id']);
                 if(!empty($request["branch"])) {
@@ -632,7 +954,7 @@ class ReportsApiController extends Controller
                 $query->oldest("party.NAME");
                 $data = $query->get();
             }
-            else if($request['id'] == 24) {
+            /*else if($request['id'] == 24) {
                 DB::enableQueryLog();
 
                  $query = GiPolicy::select('id','PartyName','PolicyNo','IsurerName','IsurerProductName','RiskDate','RiskExpDate','SumAssured','NetPremium','Premium','partyId','Nominee')
@@ -670,6 +992,68 @@ class ReportsApiController extends Controller
 
                 $data["partys"] = $partyList;
                 $data["policy_list"] = $policyList;
+            }*/
+            else if($request['id'] == 24) {
+                /* Family Wise Report */
+                if($para['optionsRadios']=="Family") {
+                    $family_group_ids = Family_group::where("client_id",$request["client_id"])->pluck("GCODE")->toArray();
+                    $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE','pol.LASTPREM','party.NAME','MODE','party.AD','party.AD2','party.AD3','party.ABD','party.PHONE_R','party.MOBILE','family_group.GNM as family_name','party.FNAME')
+                    ->leftjoin("party","party.GCODE","pol.NAME1")
+                    ->leftjoin("family_group","family_group.GCODE","party.FNAME")
+                    ->when(!empty($para['selectFamilyGroup']),function($query) {
+                        $query->whereIn("party.FNAME",$para['selectFamilyGroup']);
+                    })
+                    ->when(empty($para['selectFamilyGroup']),function($query) use($family_group_ids) {
+                        $query->whereIn("party.FNAME",$family_group_ids);
+                    });
+                    if(!empty($start) && !empty($end)) {
+                        $query->whereBetween('MATDATE',[$start,$end]);
+                    } else if(!empty($start)) {
+                        $query->where('MATDATE',$start);
+                    } else if(!empty($end)) {
+                        $query->where('MATDATE',"<=",$end); 
+                    } 
+                    $column_name = "PONO,PNAME";
+                    $temp_data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->limit(20)->get();
+                    $data = [];
+                    foreach (($para['selectFamilyGroup'] ?? $family_group_ids) as $value) {
+                        $temp = $temp_data->filter(function($item) use($value) {
+                            return $item->FNAME==$value;
+                        });
+                        if(count($temp)) {
+                            $data[$value] = $temp;
+                        }
+                    }
+                }
+                else {
+                    $party_ids = Party::where("client_id",$request["client_id"])->pluck("GCODE")->toArray();
+                    $query = Policy::select('pol.PUNIQID','pol.PONO','pol.RDT','pol.PLAN','pol.MODE','pol.PREM','pol.FUPDATE','pol.AGCODE','pol.NAME1','pol.AFILE','pol.SA','pol.MTERM','pol.TERM','pol.BCODE','pol.MATDATE','pol.ECS_MODE','pol.LASTPREM','party.NAME','MODE','party.AD','party.AD2','party.AD3','party.ABD','party.PHONE_R','party.MOBILE')
+                    ->leftjoin("party","party.GCODE","pol.NAME1")
+                    ->when(!empty($para['selectFamilyGroup']),function($query) use($para) {
+                        $query->whereIn("pol.NAME1",$para['selectFamilyGroup']);
+                    })
+                    ->when(empty($para['selectFamilyGroup']),function($query) use($party_ids) {
+                        $query->whereIn("pol.NAME1",$party_ids);
+                    });
+                    if(!empty($start) && !empty($end)) {
+                        $query->whereBetween('MATDATE',[$start,$end]);
+                    } else if(!empty($start)) {
+                        $query->where('MATDATE',$start);
+                    } else if(!empty($end)) {
+                        $query->where('MATDATE',"<=",$end); 
+                    } 
+                    $column_name = "PONO,PNAME";
+                    $temp_data = $query->where('pol.client_id',$request['client_id'])->orderBy(DB::raw($column_name),'ASC')->limit(20)->get();
+                    $data = [];
+                    foreach (($para['selectFamilyGroup'] ?? $party_ids) as $value) {
+                        $temp = $temp_data->filter(function($item) use($value) {
+                            return $item->NAME1==$value;
+                        });
+                        if(count($temp)) {
+                            $data[$value] = $temp;
+                        }
+                    }
+                }
             }
         }
         return response()->json(["success" => 1, "msg" => "Success.","data"=>$data]);
@@ -677,12 +1061,10 @@ class ReportsApiController extends Controller
 
     public function getAllReminderSetupData(Request $request) {
 
+        $data = [];
         $reminderSetup = SetupReminder::where('client_id',$request['client_id'])->first();
-        $data          = [];
-
         if(!empty($reminderSetup)) {
             $todayDt  = date("Y-m-d");
-
             //birthdayRM
             $birthdayRMbeforeDay = $reminderSetup['birthday_rm_af'];
             $birthdayRMstartDate = \Carbon\Carbon::now()->subDays($birthdayRMbeforeDay)->format('m-d');
